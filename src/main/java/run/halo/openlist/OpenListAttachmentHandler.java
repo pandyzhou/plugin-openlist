@@ -70,28 +70,28 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
                     .substring(0, 8) + "-" + originalName;
                 var remotePath = dirPath + "/" + safeName;
 
-                // 先缓冲文件内容，避免 Flux 被消费两次
-                return OpenListClient.bufferContent(file.content())
-                    .flatMap(buffered ->
-                        client.mkdir(props, dirPath)
-                            .onErrorResume(e -> {
-                                log.debug(
-                                    "mkdir may already exist: {}",
-                                    e.getMessage());
-                                return Mono.empty();
-                            })
-                            .then(client.upload(
-                                props, remotePath,
-                                buffered.content(),
-                                buffered.size()))
-                            .then(Mono.defer(() ->
-                                buildAttachment(
-                                    props, remotePath,
-                                    originalName,
-                                    buffered.size(),
-                                    file.headers()
-                                        .getContentType())))
-                    );
+                // 从请求头获取文件大小，直接流式转发，不缓冲
+                var contentLength = file.headers().getContentLength();
+
+                return client.mkdir(props, dirPath)
+                    .onErrorResume(e -> {
+                        log.debug(
+                            "mkdir may already exist: {}",
+                            e.getMessage());
+                        return Mono.empty();
+                    })
+                    .then(client.upload(
+                        props, remotePath,
+                        file.content(),
+                        contentLength > 0 ? contentLength : -1))
+                    .then(Mono.defer(() ->
+                        buildAttachment(
+                            props, remotePath,
+                            originalName,
+                            Math.max(contentLength, 0),
+                            file.headers()
+                                .getContentType())))
+                    ;
             });
     }
 

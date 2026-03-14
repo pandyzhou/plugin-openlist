@@ -117,11 +117,15 @@ public class OpenListClient {
         var url = props.getNormalizedSiteUrl() + "/api/fs/put";
         var encodedPath = URLEncoder.encode(remotePath,
             StandardCharsets.UTF_8).replace("+", "%20");
-        return webClient.put()
+        var spec = webClient.put()
             .uri(url)
             .header("Authorization", token)
-            .header("File-Path", encodedPath)
-            .header("Content-Length", String.valueOf(fileSize))
+            .header("File-Path", encodedPath);
+        if (fileSize > 0) {
+            spec = spec.header("Content-Length",
+                String.valueOf(fileSize));
+        }
+        return spec
             .body(BodyInserters.fromDataBuffers(content))
             .retrieve()
             .bodyToMono(ApiResponse.class)
