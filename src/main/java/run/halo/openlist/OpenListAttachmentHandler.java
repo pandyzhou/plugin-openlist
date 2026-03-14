@@ -1,6 +1,8 @@
 package run.halo.openlist;
 
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -9,7 +11,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -45,7 +46,8 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
     private static final DateTimeFormatter MONTH_FMT =
         DateTimeFormatter.ofPattern("MM");
 
-    private static final JsonMapper JSON_MAPPER = JsonMapper.builder().build();
+    private static final JsonMapper JSON_MAPPER =
+        JsonMapper.builder().build();
 
     private final OpenListClient client = new OpenListClient();
 
@@ -56,30 +58,39 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
             .flatMap(ctx -> {
                 var props = resolveProperties(ctx.configMap());
                 var file = ctx.file();
-                var filename = file.filename();
+                var originalName = file.filename();
                 var now = LocalDate.now();
                 var year = now.format(YEAR_FMT);
                 var month = now.format(MONTH_FMT);
                 var basePath = props.getNormalizedUploadPath();
                 var dirPath = basePath + "/" + year + "/" + month;
-                var remotePath = dirPath + "/" + filename;
 
-                return file.content()
-                    .map(DataBuffer::readableByteCount)
-                    .reduce(0L, Long::sum)
-                    .flatMap(fileSize ->
+                // 用 UUID 前缀避免同名覆盖
+                var safeName = UUID.randomUUID().toString()
+                    .substring(0, 8) + "-" + originalName;
+                var remotePath = dirPath + "/" + safeName;
+
+                // 先缓冲文件内容，避免 Flux 被消费两次
+                return OpenListClient.bufferContent(file.content())
+                    .flatMap(buffered ->
                         client.mkdir(props, dirPath)
                             .onErrorResume(e -> {
-                                log.debug("mkdir may already exist: {}",
+                                log.debug(
+                                    "mkdir may already exist: {}",
                                     e.getMessage());
                                 return Mono.empty();
                             })
                             .then(client.upload(
                                 props, remotePath,
-                                file.content(), fileSize))
-                            .then(Mono.defer(() -> buildAttachment(
-                                props, remotePath, filename,
-                                fileSize, file.headers().getContentType())))
+                                buffered.content(),
+                                buffered.size()))
+                            .then(Mono.defer(() ->
+                                buildAttachment(
+                                    props, remotePath,
+                                    originalName,
+                                    buffered.size(),
+                                    file.headers()
+                                        .getContentType())))
                     );
             });
     }
@@ -91,7 +102,8 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
             .flatMap(ctx -> {
                 var props = resolveProperties(ctx.configMap());
                 var attachment = ctx.attachment();
-                var annotations = attachment.getMetadata().getAnnotations();
+                var annotations =
+                    attachment.getMetadata().getAnnotations();
                 if (annotations == null
                     || !annotations.containsKey(REMOTE_PATH_ANNO)) {
                     return Mono.just(attachment);
@@ -121,7 +133,8 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
         if (!shouldHandle(policy)) {
             return Mono.empty();
         }
-        return Mono.justOrEmpty(buildPermalinkUri(attachment, configMap));
+        return Mono.justOrEmpty(
+            buildPermalinkUri(attachment, configMap));
     }
 
     @Override
@@ -161,7 +174,7 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
     private Mono<Attachment> buildAttachment(
         OpenListProperties props,
         String remotePath,
-        String filename,
+        String displayName,
         long fileSize,
         MediaType mediaType) {
 
@@ -174,7 +187,7 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
         ));
 
         var spec = new AttachmentSpec();
-        spec.setDisplayName(filename);
+        spec.setDisplayName(displayName);
         spec.setSize(fileSize);
         if (mediaType != null) {
             spec.setMediaType(mediaType.toString());
@@ -190,15 +203,29 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
         return Mono.just(attachment);
     }
 
+    /**
+     * 构建 permalink，对路径中每段做 URL 编码以支持中文文件名。
+     */
     private String buildPermalink(OpenListProperties props,
                                    String remotePath) {
-        return props.getNormalizedSiteUrl() + "/d" + remotePath;
+        var segments = remotePath.split("/");
+        var sb = new StringBuilder();
+        for (var seg : segments) {
+            if (seg.isEmpty()) {
+                continue;
+            }
+            sb.append("/");
+            sb.append(URLEncoder.encode(seg, StandardCharsets.UTF_8)
+                .replace("+", "%20"));
+        }
+        return props.getNormalizedSiteUrl() + "/d" + sb;
     }
 
     private Optional<URI> buildPermalinkUri(Attachment attachment,
                                              ConfigMap configMap) {
         var props = resolveProperties(configMap);
-        var annotations = attachment.getMetadata().getAnnotations();
+        var annotations =
+            attachment.getMetadata().getAnnotations();
         if (annotations == null
             || !annotations.containsKey(REMOTE_PATH_ANNO)) {
             return Optional.empty();

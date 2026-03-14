@@ -9,15 +9,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 /**
- * OpenList API 客户端，封装登录、上传、删除、获取文件信息等操作。
- * Token 按 siteUrl 缓存，48 小时过期后自动刷新。
+ * OpenList API 客户端，封装登录、上传、删除等操作。
+ * Token 按 siteUrl + username 缓存，过期或 401 时自动刷新。
  */
 public class OpenListClient {
 
@@ -39,16 +42,34 @@ public class OpenListClient {
     }
 
     /**
+     * 生成缓存 key：siteUrl + username，避免同站不同账号冲突。
+     */
+    private static String cacheKey(OpenListProperties props) {
+        return props.getNormalizedSiteUrl() + "|" + props.getUsername();
+    }
+
+    /**
      * 获取 token，优先从缓存读取。
      */
     public Mono<String> getToken(OpenListProperties props) {
-        var siteUrl = props.getNormalizedSiteUrl();
-        var cached = TOKEN_CACHE.get(siteUrl);
+        var key = cacheKey(props);
+        var cached = TOKEN_CACHE.get(key);
         if (cached != null && !cached.isExpired()) {
             return Mono.just(cached.token());
         }
         return login(props).doOnNext(token ->
-            TOKEN_CACHE.put(siteUrl, new TokenEntry(token, Instant.now()))
+            TOKEN_CACHE.put(key, new TokenEntry(token, Instant.now()))
+        );
+    }
+
+    /**
+     * 清除缓存并重新登录（用于 401 重试）。
+     */
+    private Mono<String> refreshToken(OpenListProperties props) {
+        TOKEN_CACHE.remove(cacheKey(props));
+        return login(props).doOnNext(token ->
+            TOKEN_CACHE.put(cacheKey(props),
+                new TokenEntry(token, Instant.now()))
         );
     }
 
@@ -77,29 +98,40 @@ public class OpenListClient {
 
     /**
      * 上传文件到 OpenList（PUT /api/fs/put）。
+     * content 是已缓冲的 Flux，可安全重复订阅。
      */
     public Mono<Void> upload(OpenListProperties props, String remotePath,
                              Flux<DataBuffer> content, long fileSize) {
-        return getToken(props).flatMap(token -> {
-            var url = props.getNormalizedSiteUrl() + "/api/fs/put";
-            var encodedPath = URLEncoder.encode(remotePath,
-                StandardCharsets.UTF_8).replace("+", "%20");
-            return webClient.put()
-                .uri(url)
-                .header("Authorization", token)
-                .header("File-Path", encodedPath)
-                .header("Content-Length", String.valueOf(fileSize))
-                .body(BodyInserters.fromDataBuffers(content))
-                .retrieve()
-                .bodyToMono(ApiResponse.class)
-                .flatMap(resp -> {
-                    if (resp.code() == 200) {
-                        return Mono.<Void>empty();
-                    }
-                    return Mono.error(new RuntimeException(
-                        "OpenList upload failed: " + resp.message()));
-                });
-        });
+        return getToken(props).flatMap(token ->
+            doUpload(props, token, remotePath, content, fileSize)
+                .onErrorResume(WebClientResponseException.Unauthorized.class,
+                    e -> refreshToken(props).flatMap(newToken ->
+                        doUpload(props, newToken, remotePath,
+                            content, fileSize)))
+        );
+    }
+
+    private Mono<Void> doUpload(OpenListProperties props, String token,
+                                 String remotePath,
+                                 Flux<DataBuffer> content, long fileSize) {
+        var url = props.getNormalizedSiteUrl() + "/api/fs/put";
+        var encodedPath = URLEncoder.encode(remotePath,
+            StandardCharsets.UTF_8).replace("+", "%20");
+        return webClient.put()
+            .uri(url)
+            .header("Authorization", token)
+            .header("File-Path", encodedPath)
+            .header("Content-Length", String.valueOf(fileSize))
+            .body(BodyInserters.fromDataBuffers(content))
+            .retrieve()
+            .bodyToMono(ApiResponse.class)
+            .flatMap(resp -> {
+                if (resp.code() == 200) {
+                    return Mono.<Void>empty();
+                }
+                return Mono.error(new RuntimeException(
+                    "OpenList upload failed: " + resp.message()));
+            });
     }
 
     /**
@@ -107,56 +139,88 @@ public class OpenListClient {
      */
     public Mono<Void> delete(OpenListProperties props, String dir,
                              String filename) {
-        return getToken(props).flatMap(token -> {
-            var url = props.getNormalizedSiteUrl() + "/api/fs/remove";
-            return webClient.post()
-                .uri(url)
-                .header("Authorization", token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of(
-                    "dir", dir,
-                    "names", new String[]{filename}
-                ))
-                .retrieve()
-                .bodyToMono(ApiResponse.class)
-                .flatMap(resp -> {
-                    if (resp.code() == 200) {
-                        return Mono.<Void>empty();
-                    }
-                    return Mono.error(new RuntimeException(
-                        "OpenList delete failed: " + resp.message()));
-                });
-        });
+        return getToken(props).flatMap(token ->
+            doDelete(props, token, dir, filename)
+                .onErrorResume(WebClientResponseException.Unauthorized.class,
+                    e -> refreshToken(props).flatMap(newToken ->
+                        doDelete(props, newToken, dir, filename)))
+        );
+    }
+
+    private Mono<Void> doDelete(OpenListProperties props, String token,
+                                 String dir, String filename) {
+        var url = props.getNormalizedSiteUrl() + "/api/fs/remove";
+        return webClient.post()
+            .uri(url)
+            .header("Authorization", token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(Map.of(
+                "dir", dir,
+                "names", new String[]{filename}
+            ))
+            .retrieve()
+            .bodyToMono(ApiResponse.class)
+            .flatMap(resp -> {
+                if (resp.code() == 200) {
+                    return Mono.<Void>empty();
+                }
+                return Mono.error(new RuntimeException(
+                    "OpenList delete failed: " + resp.message()));
+            });
     }
 
     /**
      * 创建目录（POST /api/fs/mkdir）。
      */
     public Mono<Void> mkdir(OpenListProperties props, String path) {
-        return getToken(props).flatMap(token -> {
-            var url = props.getNormalizedSiteUrl() + "/api/fs/mkdir";
-            return webClient.post()
-                .uri(url)
-                .header("Authorization", token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("path", path))
-                .retrieve()
-                .bodyToMono(ApiResponse.class)
-                .flatMap(resp -> {
-                    if (resp.code() == 200) {
-                        return Mono.<Void>empty();
-                    }
-                    return Mono.error(new RuntimeException(
-                        "OpenList mkdir failed: " + resp.message()));
-                });
-        });
+        return getToken(props).flatMap(token ->
+            doMkdir(props, token, path)
+                .onErrorResume(WebClientResponseException.Unauthorized.class,
+                    e -> refreshToken(props).flatMap(newToken ->
+                        doMkdir(props, newToken, path)))
+        );
+    }
+
+    private Mono<Void> doMkdir(OpenListProperties props, String token,
+                                String path) {
+        var url = props.getNormalizedSiteUrl() + "/api/fs/mkdir";
+        return webClient.post()
+            .uri(url)
+            .header("Authorization", token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(Map.of("path", path))
+            .retrieve()
+            .bodyToMono(ApiResponse.class)
+            .flatMap(resp -> {
+                if (resp.code() == 200) {
+                    return Mono.<Void>empty();
+                }
+                return Mono.error(new RuntimeException(
+                    "OpenList mkdir failed: " + resp.message()));
+            });
     }
 
     /**
-     * 清除指定站点的 token 缓存。
+     * 将 Flux 缓冲到内存，返回可重复订阅的 Flux 和总大小。
      */
-    public void evictToken(String siteUrl) {
-        TOKEN_CACHE.remove(siteUrl);
+    public static Mono<BufferedContent> bufferContent(
+        Flux<DataBuffer> content) {
+        return DataBufferUtils.join(content)
+            .map(joined -> {
+                var size = joined.readableByteCount();
+                var bytes = new byte[size];
+                joined.read(bytes);
+                DataBufferUtils.release(joined);
+                var factory = new DefaultDataBufferFactory();
+                return new BufferedContent(
+                    Flux.defer(() -> Flux.just(
+                        factory.wrap(bytes))),
+                    size
+                );
+            });
+    }
+
+    public record BufferedContent(Flux<DataBuffer> content, long size) {
     }
 
     record TokenEntry(String token, Instant createdAt) {
