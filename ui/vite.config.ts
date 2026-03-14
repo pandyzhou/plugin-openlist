@@ -31,6 +31,9 @@ export default defineConfig({
           "@halo-dev/api-client": "HaloApiClient",
           axios: "axios",
         },
+        // Halo loads plugin modules via window[plugin.name]
+        // plugin.name = "plugin-openlist" which can't be a JS identifier
+        footer: 'window["plugin-openlist"] = PluginOpenList;',
       },
     },
   },
