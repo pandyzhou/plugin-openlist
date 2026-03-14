@@ -31,23 +31,6 @@ Halo 附件存储插件，将 [OpenList](https://github.com/OpenListTeam/OpenLis
 
 可以创建多个存储策略来对接不同的 OpenList 实例。
 
-## 构建
-
-```bash
-./gradlew jar
-```
-
-产物在 `build/libs/` 下。
-
-## 发版
-
-推送 tag 会自动触发 GitHub Actions 构建并发布 Release：
-
-```bash
-git tag v1.0.3
-git push origin v1.0.3
-```
-
 ## License
 
 MIT
