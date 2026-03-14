@@ -4,5 +4,6 @@ build/
 *.log
 .idea/
 *.iml
+node_modules/
 # Keep gradle wrapper jar
 !gradle/wrapper/gradle-wrapper.jar

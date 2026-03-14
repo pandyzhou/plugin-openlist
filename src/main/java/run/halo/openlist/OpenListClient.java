@@ -220,6 +220,64 @@ public class OpenListClient {
             });
     }
 
+    /**
+     * 列出 OpenList 目录下的文件（POST /api/fs/list）。
+     */
+    @SuppressWarnings("unchecked")
+    public Mono<java.util.List<FileItem>> listFiles(
+        OpenListProperties props, String path) {
+        return getToken(props).flatMap(token ->
+            doListFiles(props, token, path)
+                .onErrorResume(
+                    WebClientResponseException.Unauthorized.class,
+                    e -> refreshToken(props).flatMap(newToken ->
+                        doListFiles(props, newToken, path)))
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private Mono<java.util.List<FileItem>> doListFiles(
+        OpenListProperties props, String token, String path) {
+        var url = props.getNormalizedSiteUrl() + "/api/fs/list";
+        return webClient.post()
+            .uri(url)
+            .header("Authorization", token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(Map.of(
+                "path", path,
+                "page", 1,
+                "per_page", 10000,
+                "refresh", false
+            ))
+            .retrieve()
+            .bodyToMono(ApiResponse.class)
+            .map(resp -> {
+                if (resp.code() != 200 || resp.data() == null) {
+                    return java.util.List.<FileItem>of();
+                }
+                var content = resp.data().get("content");
+                if (!(content instanceof java.util.List<?> list)) {
+                    return java.util.List.<FileItem>of();
+                }
+                var items = new java.util.ArrayList<FileItem>();
+                for (var item : list) {
+                    if (item instanceof Map<?, ?> m) {
+                        var name = String.valueOf(m.get("name"));
+                        var isDir = Boolean.TRUE.equals(m.get("is_dir"));
+                        var size = 0L;
+                        if (m.get("size") instanceof Number n) {
+                            size = n.longValue();
+                        }
+                        items.add(new FileItem(name, isDir, size));
+                    }
+                }
+                return java.util.List.copyOf(items);
+            });
+    }
+
+    public record FileItem(String name, boolean isDir, long size) {
+    }
+
     public record BufferedContent(Flux<DataBuffer> content, long size) {
     }
 

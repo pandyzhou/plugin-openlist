@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0]
+
+- 新增文件同步功能：在插件详情页的"文件同步"Tab 中，可一键将 OpenList 上的文件导入 Halo 附件库
+- 支持递归扫描 OpenList 目录，自动跳过已存在的附件记录
+- 新增 OpenList 目录列表 API（listFiles）
+- 新增 CustomEndpoint 同步接口
+
 ## [1.0.3]
 
 - 修复文件流被消费两次导致上传空文件的问题
