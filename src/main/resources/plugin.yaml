@@ -1,0 +1,16 @@
+apiVersion: plugin.halo.run/v1alpha1
+kind: Plugin
+metadata:
+  name: plugin-openlist
+spec:
+  enabled: true
+  version: "1.0.1"
+  requires: ">=2.23.0"
+  author:
+    name: halo-dev
+  logo: ""
+  homepage: ""
+  displayName: "OpenList 附件存储"
+  description: "将 OpenList 作为 Halo 附件存储后端，支持多实例配置"
+  license:
+    - name: "MIT"

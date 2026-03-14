@@ -1,0 +1,43 @@
+apiVersion: storage.halo.run/v1alpha1
+kind: PolicyTemplate
+metadata:
+  name: openlist
+spec:
+  displayName: OpenList 存储
+  settingName: openlist-policy-template-setting
+---
+apiVersion: v1alpha1
+kind: Setting
+metadata:
+  name: openlist-policy-template-setting
+spec:
+  forms:
+    - group: default
+      label: Default
+      formSchema:
+        - $formkit: text
+          name: siteUrl
+          label: OpenList 服务地址
+          help: "完整的 OpenList 访问地址，例如 https://alist.example.com"
+          validation: "required"
+        - $formkit: text
+          name: username
+          label: 用户名
+          help: "OpenList 登录用户名"
+          validation: "required"
+        - $formkit: password
+          name: password
+          label: 密码
+          help: "OpenList 登录密码"
+          validation: "required"
+        - $formkit: text
+          name: uploadPath
+          label: 上传根路径
+          value: ""
+          help: "文件上传到 OpenList 的目录路径，例如 /zhouyi/blog。文件将存储在此路径下按年月自动分目录"
+          validation: "required"
+        - $formkit: text
+          name: tokenEndpoint
+          label: Token 接口路径
+          value: "/api/auth/login"
+          help: "OpenList 登录接口路径，通常无需修改"
