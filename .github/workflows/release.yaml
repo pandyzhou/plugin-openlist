@@ -29,9 +29,21 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          # Extract content between ## [version] and the next ## or EOF
+          BODY=$(awk "/^## \\[${VERSION}\\]/{found=1; next} /^## \\[/{if(found) exit} found{print}" CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            BODY="Release v${VERSION}"
+          fi
+          # Write to file for multiline support
+          echo "$BODY" > /tmp/release-body.md
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           name: v${{ steps.version.outputs.VERSION }}
+          body_path: /tmp/release-body.md
           files: build/libs/plugin-openlist-${{ steps.version.outputs.VERSION }}.jar
-          generate_release_notes: true
