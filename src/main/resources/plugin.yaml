@@ -9,7 +9,7 @@ spec:
   author:
     name: 周易
     website: "https://github.com/pandyzhou"
-  logo: "https://openlistteam.github.io/docs/logo.svg"
+  logo: "https://doc.oplist.org.cn/logo.svg"
   homepage: "https://github.com/pandyzhou/plugin-openlist"
   repo: "https://github.com/pandyzhou/plugin-openlist"
   issues: "https://github.com/pandyzhou/plugin-openlist/issues"
