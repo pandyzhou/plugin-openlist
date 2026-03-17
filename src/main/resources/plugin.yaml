@@ -12,6 +12,7 @@ spec:
   logo: "https://openlistteam.github.io/docs/logo.svg"
   homepage: "https://github.com/pandyzhou/plugin-openlist"
   repo: "https://github.com/pandyzhou/plugin-openlist"
+  issues: "https://github.com/pandyzhou/plugin-openlist/issues"
   displayName: "OpenList 附件存储"
   description: "将 OpenList 作为 Halo 附件存储后端，支持多实例配置和文件同步"
   license:

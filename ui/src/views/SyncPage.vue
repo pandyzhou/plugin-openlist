@@ -21,7 +21,7 @@ const error = ref("");
 
 async function loadPolicies() {
   try {
-    const { data } = await axios.get("/api/v1alpha1/storage.halo.run/policies");
+    const { data } = await axios.get("/apis/storage.halo.run/v1alpha1/policies");
     policies.value = (data.items || []).filter(
       (p: PolicyItem) => p.spec.templateName === "openlist"
     );

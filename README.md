@@ -7,7 +7,8 @@ Halo 附件存储插件，将 [OpenList](https://github.com/OpenListTeam/OpenLis
 - 通过 OpenList API 上传、删除附件
 - 自动按年月分目录存储（`/your-path/2026/03/image.png`）
 - 支持创建多个存储策略，对应不同的 OpenList 实例
-- 自动管理登录 Token（缓存 48 小时）
+- 自动管理登录 Token（缓存 48 小时，401 自动刷新）
+- 文件同步：一键将 OpenList 上已有的文件导入 Halo 附件库
 
 ## 安装
 
@@ -30,6 +31,17 @@ Halo 附件存储插件，将 [OpenList](https://github.com/OpenListTeam/OpenLis
 所有配置项均可在每个存储策略中独立设置。
 
 可以创建多个存储策略来对接不同的 OpenList 实例。
+
+## 文件同步
+
+插件安装后，左侧菜单「工具」分组下会出现「OpenList 同步」入口。
+
+使用方式：
+1. 进入 Console → 工具 → OpenList 同步
+2. 选择要同步的存储策略
+3. 点击「同步文件」
+
+插件会递归扫描 OpenList 对应目录下的所有文件，将未在 Halo 附件库中注册的文件自动导入，已存在的文件会跳过。
 
 ## License
 
