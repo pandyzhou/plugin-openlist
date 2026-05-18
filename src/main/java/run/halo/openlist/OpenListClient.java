@@ -1,7 +1,5 @@
 package run.halo.openlist;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
@@ -115,12 +113,11 @@ public class OpenListClient {
                                  String remotePath,
                                  Flux<DataBuffer> content, long fileSize) {
         var url = props.getNormalizedSiteUrl() + "/api/fs/put";
-        var encodedPath = URLEncoder.encode(remotePath,
-            StandardCharsets.UTF_8).replace("+", "%20");
         var spec = webClient.put()
             .uri(url)
             .header("Authorization", token)
-            .header("File-Path", encodedPath);
+            .header("File-Path",
+                OpenListPathEncoder.encodeFilePathHeader(remotePath));
         if (fileSize > 0) {
             spec = spec.header("Content-Length",
                 String.valueOf(fileSize));

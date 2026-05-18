@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'run.halo.openlist'
-version = '1.1.2'
+version = '1.1.3'
 
 java {
     sourceCompatibility = JavaVersion.VERSION_21
@@ -30,7 +30,26 @@ dependencies {
     compileOnly 'org.springframework:spring-context:7.0.3'
     compileOnly 'io.projectreactor:reactor-core:3.7.6'
     compileOnly 'org.pf4j:pf4j:3.15.0'
-    compileOnly 'tools.jackson.core:jackson-databind:3.0.4'
+}
+
+test {
+    failOnNoDiscoveredTests = false
+}
+
+tasks.register('pathEncoderTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs OpenList path encoder regression checks.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'run.halo.openlist.OpenListPathEncoderTest'
+    dependsOn testClasses
+}
+
+tasks.register('propertiesResolverTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs OpenList properties resolver regression checks.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'run.halo.openlist.OpenListPropertiesResolverTest'
+    dependsOn testClasses
 }
 
 jar {

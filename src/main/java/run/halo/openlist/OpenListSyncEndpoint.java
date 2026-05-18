@@ -3,7 +3,6 @@ package run.halo.openlist;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
@@ -22,7 +21,6 @@ import run.halo.app.extension.ConfigMap;
 import run.halo.app.extension.GroupVersion;
 import run.halo.app.extension.Metadata;
 import run.halo.app.extension.ReactiveExtensionClient;
-import tools.jackson.databind.json.JsonMapper;
 
 import static org.springframework.web.reactive.function.server.RequestPredicates.POST;
 import static org.springframework.web.reactive.function.server.RouterFunctions.route;
@@ -41,9 +39,6 @@ public class OpenListSyncEndpoint implements CustomEndpoint {
 
     private static final String EXTERNAL_LINK_ANNO =
         "storage.halo.run/external-link";
-
-    private static final JsonMapper JSON_MAPPER =
-        JsonMapper.builder().build();
 
     private final ReactiveExtensionClient client;
     private final OpenListClient openListClient = new OpenListClient();
@@ -229,18 +224,6 @@ public class OpenListSyncEndpoint implements CustomEndpoint {
     }
 
     private OpenListProperties resolveProperties(ConfigMap configMap) {
-        return Optional.ofNullable(configMap)
-            .map(ConfigMap::getData)
-            .map(data -> data.get("default"))
-            .map(json -> {
-                try {
-                    return JSON_MAPPER.readValue(
-                        json, OpenListProperties.class);
-                } catch (Exception e) {
-                    log.warn("Failed to parse config", e);
-                    return null;
-                }
-            })
-            .orElseGet(OpenListProperties::new);
+        return OpenListPropertiesResolver.fromConfigMapOrDefault(configMap);
     }
 }

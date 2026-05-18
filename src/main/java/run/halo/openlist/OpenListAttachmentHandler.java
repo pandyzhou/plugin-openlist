@@ -23,7 +23,6 @@ import run.halo.app.core.extension.attachment.Policy;
 import run.halo.app.core.extension.attachment.endpoint.AttachmentHandler;
 import run.halo.app.extension.ConfigMap;
 import run.halo.app.extension.Metadata;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * OpenList 附件处理器，实现 Halo 的 AttachmentHandler 扩展点。
@@ -45,9 +44,6 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
 
     private static final DateTimeFormatter MONTH_FMT =
         DateTimeFormatter.ofPattern("MM");
-
-    private static final JsonMapper JSON_MAPPER =
-        JsonMapper.builder().build();
 
     private final OpenListClient client = new OpenListClient();
 
@@ -156,19 +152,7 @@ public class OpenListAttachmentHandler implements AttachmentHandler {
     }
 
     private OpenListProperties resolveProperties(ConfigMap configMap) {
-        return Optional.ofNullable(configMap)
-            .map(ConfigMap::getData)
-            .map(data -> data.get("default"))
-            .map(json -> {
-                try {
-                    return JSON_MAPPER.readValue(
-                        json, OpenListProperties.class);
-                } catch (Exception e) {
-                    log.warn("Failed to parse OpenList config", e);
-                    return null;
-                }
-            })
-            .orElseGet(OpenListProperties::new);
+        return OpenListPropertiesResolver.fromConfigMapOrDefault(configMap);
     }
 
     private Mono<Attachment> buildAttachment(
