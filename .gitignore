@@ -7,3 +7,5 @@ build/
 node_modules/
 # Keep gradle wrapper jar
 !gradle/wrapper/gradle-wrapper.jar
+.narrafork/
+.worktrees/
